@@ -58,7 +58,7 @@ def obter_dados(ticker):
             'ebt': get_val(is_stmt, ['Pretax Income', 'Income Before Tax']),
             'receita_total': info.get('totalRevenue') or get_val(is_stmt, ['Total Revenue', 'Operating Revenue']),
             'custo_receita': get_val(is_stmt, ['Cost Of Revenue', 'Total Expenses']),
-            'juros_liquidos': get_val(is_stmt, ['Interest Expense', 'Net Interest Income']),
+            'juros_liquidos': get_val(is_stmt, ['Interest Expense', 'Interest Income Non Operating', 'Net Interest Income', 'Interest Expense Non Operating']),
             'imposto_renda': get_val(is_stmt, ['Tax Provision', 'Income Tax Expense']),
             
             # Balance Sheet
