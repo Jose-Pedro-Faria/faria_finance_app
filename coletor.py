@@ -26,47 +26,56 @@ def obter_dados(ticker):
         cf = acao.cashflow             # Cash Flow
         info = acao.info               # Metadados e rácios prontos
 
-        # Função auxiliar para extrair o valor mais recente (coluna 0) com segurança
-        def get_val(df, label):
-            if df is not None and not df.empty and label in df.index:
-                return df.loc[label].iloc[0]
+# Função robusta para tentar vários nomes possíveis para o mesmo indicador
+        def get_val(df, labels):
+            if df is None or df.empty:
+                return None
+            # Se passarmos apenas uma string, convertemos para lista
+            if isinstance(labels, str):
+                labels = [labels]
+            
+            for label in labels:
+                if label in df.index:
+                    val = df.loc[label].iloc[0]
+                    # Verifica se o valor é um número válido e não NaN
+                    if pd.notnull(val):
+                        return val
             return None
 
-        # Dicionário com os campos das tuas imagens (Dados Brutos)
         dados = {
             'data_extracao': datetime.now().strftime('%Y-%m-%d'),
             'ticker': ticker,
             'dia_semana': DIA_ATUAL,
             
-            # Dados de Mercado e Gerais
+            # Dados de Mercado
             'num_acoes': info.get('sharesOutstanding'),
             'beta': info.get('beta'),
             
-            # Income Statement (Demonstração de Resultados)
-            'lucro_liquido': get_val(is_stmt, 'Net Income'),
-            'lucro_operacional': get_val(is_stmt, 'Operating Income'),
+            # Income Statement
+            'lucro_liquido': get_val(is_stmt, ['Net Income', 'Net Income Common Stockholders']),
+            'lucro_operacional': get_val(is_stmt, ['Operating Income', 'Operating Profit']),
             'ebit': get_val(is_stmt, 'EBIT'),
-            'ebt': get_val(is_stmt, 'Pretax Income'),
-            'receita_total': info.get('totalRevenue') or get_val(is_stmt, 'Total Revenue'),
-            'custo_receita': get_val(is_stmt, 'Cost Of Revenue'),
-            'juros_liquidos': get_val(is_stmt, 'Interest Expense'),
-            'imposto_renda': get_val(is_stmt, 'Tax Provision'),
+            'ebt': get_val(is_stmt, ['Pretax Income', 'Income Before Tax']),
+            'receita_total': info.get('totalRevenue') or get_val(is_stmt, ['Total Revenue', 'Operating Revenue']),
+            'custo_receita': get_val(is_stmt, ['Cost Of Revenue', 'Total Expenses']),
+            'juros_liquidos': get_val(is_stmt, ['Interest Expense', 'Net Interest Income']),
+            'imposto_renda': get_val(is_stmt, ['Tax Provision', 'Income Tax Expense']),
             
-            # Balance Sheet (Balanço Patrimonial)
-            'patrimonio_liquido': get_val(bs, 'Stockholders Equity'),
+            # Balance Sheet
+            'patrimonio_liquido': get_val(bs, ['Stockholders Equity', 'Total Equity Gross Minority Interest']),
             'ativo_total': get_val(bs, 'Total Assets'),
-            'ativo_circulante': get_val(bs, 'Total Current Assets'),
-            'passivo_circulante': get_val(bs, 'Total Current Liabilities'),
-            'divida_total': info.get('totalDebt') or (get_val(bs, 'Total Debt') if 'Total Debt' in bs.index else None),
-            'caixa_equivalentes': info.get('totalCash') or get_val(bs, 'Cash And Cash Equivalents'),
-            'inventory': get_val(bs, 'Inventory'),
+            'ativo_circulante': get_val(bs, ['Total Current Assets', 'Current Assets']),
+            'passivo_circulante': get_val(bs, ['Total Current Liabilities', 'Current Liabilities']),
+            'divida_total': info.get('totalDebt') or get_val(bs, ['Total Debt', 'Long Term Debt']),
+            'caixa_equivalentes': info.get('totalCash') or get_val(bs, ['Cash And Cash Equivalents', 'Cash Cash Equivalents And Short Term Investments']),
+            'inventory': get_val(bs, ['Inventory', 'Total Inventory']),
             'retained_earnings': get_val(bs, 'Retained Earnings'),
             
-            # Cash Flow (Fluxo de Caixa)
-            'fluxo_caixa_op': get_val(cf, 'Operating Cash Flow'),
-            'capex': abs(get_val(cf, 'Capital Expenditure')) if get_val(cf, 'Capital Expenditure') else None,
-            'dividendos_pagos': abs(get_val(cf, 'Cash Dividends Paid')) if get_val(cf, 'Cash Dividends Paid') else 0,
-            'free_cash_flow': info.get('freeCashflow')
+            # Cash Flow
+            'fluxo_caixa_op': get_val(cf, ['Operating Cash Flow', 'Cash Flow From Continuing Operating Activities']),
+            'capex': abs(get_val(cf, ['Capital Expenditure', 'Investing Cash Flow'])) if get_val(cf, ['Capital Expenditure', 'Investing Cash Flow']) else None,
+            'dividendos_pagos': abs(get_val(cf, ['Cash Dividends Paid', 'Common Stock Dividend Paid'])) if get_val(cf, ['Cash Dividends Paid', 'Common Stock Dividend Paid']) else 0,
+            'free_cash_flow': info.get('freeCashflow') or get_val(cf, 'Free Cash Flow')
         }
 
         # Cálculo de EBITDA (se não vier no info, somamos EBIT + Depreciação)
@@ -100,27 +109,29 @@ def salvar_no_sqlite(lista_resultados):
         print(f"\n[!] Erro ao aceder à Base de Dados: {e}")
 
 if __name__ == "__main__":
-    print(f"{'='*40}")
-    print(f"FARIA FINANCE APP - Execução de {DIA_ATUAL}")
-    print(f"{'='*40}")
+    # ... (código anterior)
     
     if not os.path.exists(LISTA_HOJE):
-        print(f"Aviso: O ficheiro '{DIA_ATUAL}.txt' não existe na pasta 'listas/'.")
-        print("Crie o ficheiro para processar empresas hoje.")
+        print(f"Ficheiro {DIA_ATUAL}.txt não encontrado.")
     else:
         with open(LISTA_HOJE, 'r') as f:
-            tickers = [line.strip().upper() for line in f if line.strip()]
+            # Lemos o conteúdo todo do ficheiro
+            conteudo = f.read()
+            
+            # 1. Substituímos vírgulas por quebras de linha
+            # 2. Partimos o texto por linhas
+            # 3. Limpamos espaços em branco
+            tickers = [t.strip().upper() for t in conteudo.replace(',', '\n').split('\n') if t.strip()]
         
         if not tickers:
-            print(f"A lista '{DIA_ATUAL}.txt' está vazia.")
+            print(f"Nenhum ticker encontrado em {DIA_ATUAL}.txt")
         else:
+            print(f"Empresas detetadas: {tickers}") # Para confirmares no terminal
             resultados = []
             for t in tickers:
                 res = obter_dados(t)
                 if res:
                     resultados.append(res)
-                
-                # Pausa de 2 segundos para respeitar os servidores do Yahoo
                 time.sleep(2)
             
             salvar_no_sqlite(resultados)
